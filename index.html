@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fecha fija + hora original de la foto</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+  <style>
+    :root {
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(135deg, #0f172a, #111827 45%, #1e293b);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container { max-width: 1180px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 30px; }
+    .subtitle { margin: 0 0 24px; color: var(--muted); line-height: 1.5; }
+    .card {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+      margin-bottom: 18px;
+    }
+    .section-title { margin: 0 0 12px; font-size: 18px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    input, select, button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 15px;
+    }
+    input:focus, select:focus {
+      outline: 2px solid #60a5fa;
+      border-color: #60a5fa;
+    }
+    input[type="color"] {
+      min-height: 48px;
+      padding: 6px;
+    }
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      border: none;
+      font-weight: bold;
+    }
+    button:hover { filter: brightness(1.05); }
+    .dropzone {
+      border: 2px dashed #64748b;
+      border-radius: 18px;
+      padding: 28px;
+      text-align: center;
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .dropzone.dragover {
+      border-color: #60a5fa;
+      background: rgba(30, 41, 59, 0.9);
+    }
+    .status {
+      margin: 12px 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(51, 65, 85, 0.5);
+      line-height: 1.45;
+    }
+    .status.error {
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecaca;
+      border: 1px solid rgba(239, 68, 68, 0.5);
+    }
+    .status.success {
+      background: rgba(20, 83, 45, 0.35);
+      color: #bbf7d0;
+      border: 1px solid rgba(34, 197, 94, 0.5);
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.45;
+    }
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .preview-item {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .preview-item img {
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      display: block;
+    }
+    .preview-caption {
+      padding: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 20px;
+    }
+    .modal-card {
+      width: min(980px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      background: rgba(17, 24, 39, 0.98);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+    .modal-alert {
+      display: none;
+      margin: 12px 0 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #fca5a5;
+      background: linear-gradient(180deg, rgba(127, 29, 29, 0.18) 0%, rgba(153, 27, 27, 0.12) 100%);
+      color: #fee2e2;
+      font-size: 14px;
+      line-height: 1.45;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.12);
+    }
+    .modal-alert.show {
+      display: block;
+      animation: modalAlertPop .18s ease-out;
+    }
+    @keyframes modalAlertPop {
+      from { transform: translateY(-4px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    @media (max-width: 720px) {
+      .actions { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+      
+    <div id="splashScreen" style="
+          position:fixed;
+          inset:0;
+          background:linear-gradient(135deg, #020617, #0f172a, #1e293b);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          flex-direction:column;
+          z-index:10000;
+          color:white;
+          font-family:Arial, Helvetica, sans-serif;
+          text-align:center;
+        ">
+          <h1 style="font-size:42px;margin:0;">Marca h2o</h1>
+
+          <p style="font-size:20px;margin-top:10px;">
+            Desarrollado por
+          </p>
+
+          <p style="font-size:26px;color:#F0F40B;margin-bottom:28px;">
+            Aris Ávila
+          </p>
+
+          <div style="
+            width:320px;
+            max-width:80%;
+            height:22px;
+            background:rgba(255,255,255,0.12);
+            border:1px solid rgba(255,255,255,0.2);
+            border-radius:20px;
+            overflow:hidden;
+            box-shadow:inset 0 0 8px rgba(0,0,0,0.35);
+          ">
+            <div id="progressBar" style="
+              width:0%;
+              height:100%;
+              background:linear-gradient(90deg, #22c55e, #84cc16, #eab308);
+              border-radius:20px;
+              transition:width 0.08s linear;
+            "></div>
+          </div>
+
+          <p id="progressText" style="
+            margin-top:12px;
+            font-size:14px;
+            color:#cbd5e1;
+          ">Cargando... 0%</p>
+      </div>
+
+  <div class="container" id="mainApp" style="display:none;">
+    <h1>Proingelectric 2026</h1>
+    <p class="subtitle">
+      Desarrollado by Aris Ávila
+    </p>
+
+    <div class="card">
+      <h2 class="section-title">1) Datos base</h2>
+      <div class="grid">
+        <div>
+          <label for="packageName">Nombre del paquete</label>
+          <input id="packageName" type="text" placeholder="Ej. Evidencia_Fecha_Corregida" />
+        </div>
+        <div>
+          <label for="dateInput">Fecha nueva a colocar</label>
+          <input id="dateInput" type="date" />
+        </div>
+        <div>
+          <label for="timeFormat">Formato de fecha y hora</label>
+          <select id="timeFormat">
+            <option value="camera">Formato cámara (mar. 09 2026 18:33:30)</option>
+            <option value="12">12 horas (09/03/2026 06:33:30PM)</option>
+            <option value="24">24 horas (09/03/2026 18:33:30)</option>            
+          </select>
+        </div>
+        <div>
+          <label for="readMode">Tomar hora desde</label>
+          <select id="readMode">
+            <option value="exif">Metadata EXIF de la foto</option>
+            <option value="filename">Nombre del archivo</option>
+            <option value="modified">Fecha de modificación del archivo</option>
+          </select>
+          <div class="small">La opción más precisa suele ser EXIF. Si no se puede leer, el sistema te mostrará la foto para que indiques la hora manualmente.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">2) Personalización</h2>
+      <div class="grid">
+        <div>
+          <label for="fontFamily">Tipo de fuente</label>
+          <select id="fontFamily">
+            <option value="Arial">Arial</option>
+            <option value="Verdana">Verdana</option>
+            <option value="Tahoma">Tahoma</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Courier New">Courier New</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Impact">Impact</option>
+          </select>
+        </div>
+        <div>
+          <label for="fontColor">Color del texto</label>
+          <input id="fontColor" type="color" value="#F0F40B" />
+        </div>
+        <div>
+          <label for="fontSize">Tamaño del texto</label>
+          <input id="fontSize" type="number" min="14" max="96" value="28" />
+        </div>
+        <div>
+          <label for="textOpacity">Opacidad del texto</label>
+          <input id="textOpacity" type="number" min="0.1" max="1" step="0.1" value="1" />
+        </div>
+        <div>
+          <label for="bgOpacity">Opacidad del fondo</label>
+          <input id="bgOpacity" type="number" min="0" max="1" step="0.1" value="-2" />
+        </div>
+        <div>
+          <label for="cornerSelect">Esquina de la marca</label>
+          <select id="cornerSelect">            
+            <option value="bottom-left">Inferior izquierda</option>
+            <option value="bottom-right">Inferior derecha</option>
+            <option value="top-right">Superior derecha</option>
+            <option value="top-left">Superior izquierda</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">3) Recorte manual</h2>
+      <div class="grid">
+        <div>
+          <label for="cropTop">Recortar arriba (px)</label>
+          <input id="cropTop" type="number" min="0" value="0" />
+        </div>
+        <div>
+          <label for="cropBottom">Recortar abajo (px)</label>
+          <input id="cropBottom" type="number" min="0" value="50" />
+        </div>
+        <div>
+          <label for="cropLeft">Recortar izquierda (px)</label>
+          <input id="cropLeft" type="number" min="0" value="0" />
+        </div>
+        <div>
+          <label for="cropRight">Recortar derecha (px)</label>
+          <input id="cropRight" type="number" min="0" value="0" />
+        </div>
+      </div>
+      <div class="small">Sirve para quitar la fecha vieja desde un borde antes de poner la nueva.</div>
+      <div style="margin-top:14px;">
+        <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer;">
+          <input id="smartAssistToggle" type="checkbox" checked style="width:auto; margin-top:2px;" />
+          <span>Activar ayuda inteligente: si la foto parece tener la marca vieja en otra esquina, está horizontal o no se puede leer la hora, se abrirá el editor manual para esa foto.</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">4) Fotografías</h2>
+      <div id="dropzone" class="dropzone">
+        <strong>Arrastra aquí tus fotografías</strong>
+        <p>o</p>
+        <input id="fileInput" type="file" accept="image/*" multiple />
+      </div>
+      <div id="status" class="status">Aún no has cargado fotografías.</div>
+      <div class="actions">
+        <button id="previewButton" type="button">Generar vista previa</button>
+        <button id="downloadButton" type="button">Descargar paquete ZIP</button>
+      </div>
+      <div class="actions" style="margin-top:12px;">
+        <button id="saveFolderButton" type="button">Guardar directamente en carpeta</button>
+        <button id="clearButton" type="button">Limpiar fotos cargadas</button>
+      </div>
+      <div class="small">Si Windows te bloquea el ZIP, usa Guardar directamente en carpeta.</div>
+      <div id="previewGrid" class="preview-grid"></div>
+    </div>
+  </div>
+
+  <div id="timeModal" class="modal-overlay">
+    <div class="modal-card">
+      <h2 class="section-title">Editor manual de fotografía</h2>
+      <div id="modalProgress" class="small">Foto 1 de 1</div>
+      <div id="modalReason" class="small">Revisa la imagen, corrige giro, recorte y hora, y luego continúa.</div>
+      <div id="modalAlert" class="modal-alert" role="alert" aria-live="assertive"></div>
+      <div class="small" style="margin-top:8px;"><strong>Atajos:</strong> Enter aplicar, A usar auto, Q girar izquierda, E girar derecha, R restablecer, Backspace volver a la anterior, Esc cancelar. Recorte rápido: W/S arriba, I/K abajo, J/L izquierda, ←/→ derecha. Mantén Shift para mover de 1 en 1.</div>
+      <div style="margin-top:14px; display:grid; grid-template-columns:minmax(280px, 520px) 1fr; gap:18px; align-items:start;">
+        <div>
+          <canvas id="modalPreviewCanvas" style="width:100%; border-radius:12px; border:1px solid var(--border); display:block; background:#000;"></canvas>
+          <div id="modalFilename" class="small" style="margin-top:8px;"></div>
+        </div>
+        <div>
+          <div class="grid">
+            <div>
+              <label for="manualHour">Hora</label>
+              <input id="manualHour" type="number" min="0" max="23" value="8" />
+            </div>
+            <div>
+              <label for="manualMinute">Minuto</label>
+              <input id="manualMinute" type="number" min="0" max="59" value="0" />
+            </div>
+            <div>
+              <label for="manualSecond">Segundo</label>
+              <input id="manualSecond" type="number" min="0" max="59" value="0" />
+            </div>
+          </div>
+
+          <div class="actions" style="margin-top:14px;">
+            <button id="rotateLeftButton" type="button">Girar izquierda</button>
+            <button id="rotateRightButton" type="button">Girar derecha</button>
+          </div>
+
+          <div class="grid" style="margin-top:14px;">
+            <div>
+              <label for="manualCropTop">Recortar arriba (px)</label>
+              <input id="manualCropTop" type="number" min="0" value="0" />
+            </div>
+            <div>
+              <label for="manualCropBottom">Recortar abajo (px)</label>
+              <input id="manualCropBottom" type="number" min="0" value="0" />
+            </div>
+            <div>
+              <label for="manualCropLeft">Recortar izquierda (px)</label>
+              <input id="manualCropLeft" type="number" min="0" value="0" />
+            </div>
+            <div>
+              <label for="manualCropRight">Recortar derecha (px)</label>
+              <input id="manualCropRight" type="number" min="0" value="0" />
+            </div>
+          </div>
+
+          <div class="actions" style="margin-top:18px;">
+            <button id="modalPrevButton" type="button">⬅️ Anterior</button>
+            <button id="modalResetButton" type="button">Restablecer</button>
+          </div>
+          <div class="actions" style="margin-top:12px;">
+            <button id="modalConfirmButton" type="button">Aplicar y siguiente</button>
+            <button id="modalUseAutoButton" type="button">Usar auto sin cambios</button>
+          </div>
+          <div class="actions" style="margin-top:12px;">
+            <button id="modalCancelButton" type="button">Cancelar proceso</button>
+            <div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropzone = document.getElementById('dropzone');
+    const statusBox = document.getElementById('status');
+    const previewGrid = document.getElementById('previewGrid');
+    const previewButton = document.getElementById('previewButton');
+    const downloadButton = document.getElementById('downloadButton');
+    const saveFolderButton = document.getElementById('saveFolderButton');
+    const clearButton = document.getElementById('clearButton');
+    const smartAssistToggle = document.getElementById('smartAssistToggle');
+    const timeModal = document.getElementById('timeModal');
+    const modalPreviewCanvas = document.getElementById('modalPreviewCanvas');
+    const modalProgress = document.getElementById('modalProgress');
+    const modalReason = document.getElementById('modalReason');
+    const modalAlert = document.getElementById('modalAlert');
+    const modalFilename = document.getElementById('modalFilename');
+    const manualHour = document.getElementById('manualHour');
+    const manualMinute = document.getElementById('manualMinute');
+    const manualSecond = document.getElementById('manualSecond');
+    const manualCropTop = document.getElementById('manualCropTop');
+    const manualCropBottom = document.getElementById('manualCropBottom');
+    const manualCropLeft = document.getElementById('manualCropLeft');
+    const manualCropRight = document.getElementById('manualCropRight');
+    const rotateLeftButton = document.getElementById('rotateLeftButton');
+    const rotateRightButton = document.getElementById('rotateRightButton');
+    const modalPrevButton = document.getElementById('modalPrevButton');
+    const modalResetButton = document.getElementById('modalResetButton');
+    const modalUseAutoButton = document.getElementById('modalUseAutoButton');
+    const modalConfirmButton = document.getElementById('modalConfirmButton');
+    const modalCancelButton = document.getElementById('modalCancelButton');
+
+    let selectedFiles = [];
+    let manualTimeOverrides = {};
+    let manualPhotoOverrides = {};
+    let manualDraftStates = {};
+    let currentManualFile = null;
+    let activeManualSession = null;
+    let manualKeyHandler = null;
+    let reviewedSignature = null;
+
+    function setStatus(message, type) {
+      statusBox.className = 'status' + (type ? ' ' + type : '');
+      statusBox.textContent = message;
+    }
+
+    function getReviewSignature() {
+      return JSON.stringify({
+        smartAssist: !!smartAssistToggle.checked,
+        readMode: document.getElementById('readMode').value,
+        files: selectedFiles.map(function(file) {
+          return [file.name, file.size, file.lastModified];
+        })
+      });
+    }
+
+    function invalidateReviewState() {
+      reviewedSignature = null;
+    }
+
+    function markReviewCompleted() {
+      reviewedSignature = getReviewSignature();
+    }
+
+    function isReviewStillValid() {
+      return !!selectedFiles.length && reviewedSignature === getReviewSignature();
+    }
+
+    function showModalAlert(message) {
+      if (!modalAlert) return;
+      if (!message) {
+        modalAlert.textContent = '';
+        modalAlert.classList.remove('show');
+        return;
+      }
+      modalAlert.innerHTML = '<strong>Revisión pendiente:</strong> ' + message;
+      modalAlert.classList.add('show');
+    }
+
+    function pad(value) {
+      return String(value).padStart(2, '0');
+    }
+
+    function sanitizeName(text) {
+      return (text || 'Paquete').trim().replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_') || 'Paquete';
+    }
+
+    function rgbaFromHex(hex, alpha) {
+      const clean = hex.replace('#', '');
+      const bigint = parseInt(clean, 16);
+      const r = (bigint >> 16) & 255;
+      const g = (bigint >> 8) & 255;
+      const b = bigint & 255;
+      return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+    }
+
+    function getFixedDate() {
+      const dateValue = document.getElementById('dateInput').value;
+      if (!dateValue) throw new Error('Debes indicar una fecha nueva.');
+      const parts = dateValue.split('-').map(Number);
+      return { year: parts[0], month: parts[1], day: parts[2] };
+    }
+
+    function extractTimeFromFilename(name) {
+      const patterns = [
+        /(\d{2})[:._-](\d{2})[:._-](\d{2})/,
+        /(?:_|-|\s)(\d{2})(\d{2})(\d{2})(?:_|-|\s|\.)/,
+        /(\d{2})(\d{2})(\d{2})/
+      ];
+      for (let i = 0; i < patterns.length; i++) {
+        const match = name.match(patterns[i]);
+        if (match) {
+          const hh = Number(match[1]);
+          const mm = Number(match[2]);
+          const ss = Number(match[3]);
+          if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59 && ss >= 0 && ss <= 59) {
+            return { hour: hh, minute: mm, second: ss };
+          }
+        }
+      }
+      return null;
+    }
+
+    function getExifDate(file) {
+      return new Promise(function(resolve) {
+        try {
+          EXIF.getData(file, function() {
+            const dateTimeOriginal = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'DateTime');
+            if (!dateTimeOriginal || typeof dateTimeOriginal !== 'string') {
+              resolve(null);
+              return;
+            }
+            const match = dateTimeOriginal.match(/(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+            if (!match) {
+              resolve(null);
+              return;
+            }
+            resolve({
+              year: Number(match[1]),
+              month: Number(match[2]),
+              day: Number(match[3]),
+              hour: Number(match[4]),
+              minute: Number(match[5]),
+              second: Number(match[6])
+            });
+          });
+        } catch (error) {
+          resolve(null);
+        }
+      });
+    }
+
+    function getFileKey(file) {
+      return file.name + '|' + file.size + '|' + file.lastModified;
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise(function(resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function(e) { resolve(e.target.result); };
+        reader.onerror = function() { reject(new Error('No se pudo cargar la vista previa de la foto.')); };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function loadImageElement(file) {
+      return new Promise(async function(resolve, reject) {
+        try {
+          const src = await fileToDataUrl(file);
+          const img = new Image();
+          img.onload = function() { resolve(img); };
+          img.onerror = function() { reject(new Error('No se pudo leer la imagen ' + file.name + '.')); };
+          img.src = src;
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }
+
+    function getGlobalCropSettings() {
+      return {
+        top: Math.max(0, Number(document.getElementById('cropTop').value) || 0),
+        bottom: Math.max(0, Number(document.getElementById('cropBottom').value) || 0),
+        left: Math.max(0, Number(document.getElementById('cropLeft').value) || 0),
+        right: Math.max(0, Number(document.getElementById('cropRight').value) || 0)
+      };
+    }
+
+    function getDefaultManualState(file, detectedTime) {
+      const globalCrop = getGlobalCropSettings();
+      const key = getFileKey(file);
+      const saved = manualPhotoOverrides[key];
+      const draft = manualDraftStates[key];
+      if (saved) {
+        return {
+          rotation: saved.rotation || 0,
+          cropTop: saved.cropTop || 0,
+          cropBottom: saved.cropBottom || 0,
+          cropLeft: saved.cropLeft || 0,
+          cropRight: saved.cropRight || 0,
+          hour: saved.hour,
+          minute: saved.minute,
+          second: saved.second
+        };
+      }
+      if (draft) {
+        return {
+          rotation: draft.rotation || 0,
+          cropTop: draft.cropTop || 0,
+          cropBottom: draft.cropBottom || 0,
+          cropLeft: draft.cropLeft || 0,
+          cropRight: draft.cropRight || 0,
+          hour: draft.hour,
+          minute: draft.minute,
+          second: draft.second
+        };
+      }
+      return {
+        rotation: 0,
+        cropTop: globalCrop.top,
+        cropBottom: globalCrop.bottom,
+        cropLeft: globalCrop.left,
+        cropRight: globalCrop.right,
+        hour: detectedTime ? detectedTime.hour : '',
+        minute: detectedTime ? detectedTime.minute : '',
+        second: detectedTime ? detectedTime.second : ''
+      };
+    }
+
+    function getRotatedDimensions(width, height, rotation) {
+      return rotation % 180 === 0 ? { width: width, height: height } : { width: height, height: width };
+    }
+
+    function drawPreviewToCanvas(img, state, canvas) {
+      const rotation = ((state.rotation % 360) + 360) % 360;
+      const rotated = getRotatedDimensions(img.width, img.height, rotation);
+      const cropTop = Math.max(0, Number(state.cropTop) || 0);
+      const cropBottom = Math.max(0, Number(state.cropBottom) || 0);
+      const cropLeft = Math.max(0, Number(state.cropLeft) || 0);
+      const cropRight = Math.max(0, Number(state.cropRight) || 0);
+      const finalWidth = rotated.width - cropLeft - cropRight;
+      const finalHeight = rotated.height - cropTop - cropBottom;
+
+      if (finalWidth <= 0 || finalHeight <= 0) {
+        throw new Error('El recorte es demasiado grande para el tamaño de la imagen.');
+      }
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = rotated.width;
+      tempCanvas.height = rotated.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.save();
+      if (rotation === 90) {
+        tempCtx.translate(rotated.width, 0);
+        tempCtx.rotate(Math.PI / 2);
+      } else if (rotation === 180) {
+        tempCtx.translate(rotated.width, rotated.height);
+        tempCtx.rotate(Math.PI);
+      } else if (rotation === 270) {
+        tempCtx.translate(0, rotated.height);
+        tempCtx.rotate(-Math.PI / 2);
+      }
+      tempCtx.drawImage(img, 0, 0);
+      tempCtx.restore();
+
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, finalWidth, finalHeight);
+      ctx.drawImage(tempCanvas, cropLeft, cropTop, finalWidth, finalHeight, 0, 0, finalWidth, finalHeight);
+      return { width: finalWidth, height: finalHeight };
+    }
+
+    function renderManualPreview() {
+      if (!activeManualSession || !activeManualSession.image) return;
+      activeManualSession.state.cropTop = Number(manualCropTop.value) || 0;
+      activeManualSession.state.cropBottom = Number(manualCropBottom.value) || 0;
+      activeManualSession.state.cropLeft = Number(manualCropLeft.value) || 0;
+      activeManualSession.state.cropRight = Number(manualCropRight.value) || 0;
+      try {
+        drawPreviewToCanvas(activeManualSession.image, activeManualSession.state, modalPreviewCanvas);
+        modalPreviewCanvas.style.opacity = '1';
+        modalReason.textContent = activeManualSession.reason;
+      } catch (error) {
+        modalPreviewCanvas.style.opacity = '0.55';
+        modalReason.textContent = activeManualSession.reason + ' ' + error.message;
+      }
+    }
+
+    function getValidatedManualTime() {
+      const rawHour = String(manualHour.value).trim();
+      const rawMinute = String(manualMinute.value).trim();
+      const rawSecond = String(manualSecond.value).trim();
+      if (rawHour === '' || rawMinute === '' || rawSecond === '') {
+        throw new Error('Te falta completar la hora de esta foto. Escribe hora, minuto y segundo para continuar.');
+      }
+      const hh = Number(rawHour);
+      const mm = Number(rawMinute);
+      const ss = Number(rawSecond);
+      if (Number.isNaN(hh) || Number.isNaN(mm) || Number.isNaN(ss) || hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59) {
+        throw new Error('La hora escrita no es válida. Revisa los valores y vuelve a intentarlo.');
+      }
+      return { hour: hh, minute: mm, second: ss };
+    }
+
+    async function detectReadableTime(file) {
+      const key = getFileKey(file);
+      if (manualPhotoOverrides[key] && typeof manualPhotoOverrides[key].hour === 'number') {
+        return {
+          hour: manualPhotoOverrides[key].hour,
+          minute: manualPhotoOverrides[key].minute,
+          second: manualPhotoOverrides[key].second
+        };
+      }
+      if (manualTimeOverrides[key]) {
+        return manualTimeOverrides[key];
+      }
+
+      const mode = document.getElementById('readMode').value;
+      let timeParts = null;
+
+      if (mode === 'exif') {
+        const exifParts = await getExifDate(file);
+        if (exifParts) {
+          timeParts = { hour: exifParts.hour, minute: exifParts.minute, second: exifParts.second };
+        }
+      }
+
+      if (!timeParts && (mode === 'filename' || mode === 'exif')) {
+        timeParts = extractTimeFromFilename(file.name);
+      }
+
+      if (!timeParts && mode === 'modified') {
+        const d = new Date(file.lastModified);
+        timeParts = { hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds() };
+      }
+
+      return timeParts;
+    }
+
+    async function analyzePhotoForManualAssist(file) {
+      const detectedTime = await detectReadableTime(file);
+      if (!smartAssistToggle.checked) {
+        return { requiresManual: !detectedTime, reason: !detectedTime ? 'No se pudo leer la hora automáticamente.' : '', detectedTime: detectedTime };
+      }
+
+      const img = await loadImageElement(file);
+      const scaledWidth = Math.max(80, Math.min(300, img.width));
+      const scaledHeight = Math.max(80, Math.round(img.height * (scaledWidth / img.width)));
+      const canvas = document.createElement('canvas');
+      canvas.width = scaledWidth;
+      canvas.height = scaledHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+
+      const sampleW = Math.max(20, Math.floor(scaledWidth * 0.28));
+      const sampleH = Math.max(20, Math.floor(scaledHeight * 0.22));
+      const corners = [
+        { key: 'top-left', x: 0, y: 0 },
+        { key: 'top-right', x: scaledWidth - sampleW, y: 0 },
+        { key: 'bottom-left', x: 0, y: scaledHeight - sampleH },
+        { key: 'bottom-right', x: scaledWidth - sampleW, y: scaledHeight - sampleH }
+      ];
+
+      function scoreRegion(region) {
+        const data = ctx.getImageData(region.x, region.y, sampleW, sampleH).data;
+        let darkPixels = 0;
+        let brightPixels = 0;
+        let contrast = 0;
+        let edgeLike = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+          if (lum < 72) darkPixels++;
+          if (lum > 190) brightPixels++;
+          if (lum < 55 || lum > 215) edgeLike++;
+          contrast += Math.abs(lum - 128);
+        }
+        const total = data.length / 4;
+        return (darkPixels / total) * 0.46 + (brightPixels / total) * 0.18 + (edgeLike / total) * 0.18 + (contrast / total / 128) * 0.18;
+      }
+
+      const scored = corners.map(function(corner) {
+        return { key: corner.key, score: scoreRegion(corner) };
+      }).sort(function(a, b) { return b.score - a.score; });
+
+      const bestCorner = scored[0];
+      const secondCorner = scored[1];
+      const bottomLeftScore = (scored.find(function(item) { return item.key === 'bottom-left'; }) || { score: 0 }).score;
+      const nonBottomLeftBest = scored.find(function(item) { return item.key !== 'bottom-left'; }) || { key: 'top-right', score: 0 };
+      const isLandscape = img.width > img.height * 1.08;
+      const isVeryWide = img.width > img.height * 1.22;
+      const isUncertain = bestCorner && secondCorner && Math.abs(bestCorner.score - secondCorner.score) < 0.025;
+      const weakBottomLeft = bottomLeftScore < 0.26;
+      const rivalCornerStrong = nonBottomLeftBest.score > 0.31;
+      const rivalBeatsBottomLeft = nonBottomLeftBest.score > bottomLeftScore + 0.02;
+      let reason = '';
+      let requiresManual = false;
+
+      if (!detectedTime) {
+        requiresManual = true;
+        reason = 'No se pudo leer la hora automáticamente.';
+      }
+
+      if (bestCorner && bestCorner.key !== 'bottom-left' && (bestCorner.score > 0.32 || rivalBeatsBottomLeft)) {
+        requiresManual = true;
+        reason = reason ? reason + ' Además, la marca vieja parece estar en ' + bestCorner.key + '.' : 'La marca vieja parece estar en ' + bestCorner.key + '.';
+      }
+
+      if (!requiresManual && (weakBottomLeft || rivalCornerStrong || isUncertain)) {
+        requiresManual = true;
+        reason = 'La foto quedó como sospechosa y conviene revisarla manualmente para evitar doble marca de agua.';
+      }
+
+      if (isLandscape || isVeryWide) {
+        requiresManual = true;
+        reason = reason ? reason + ' La foto viene horizontal y conviene revisarla.' : 'La foto viene horizontal y conviene revisarla.';
+      }
+
+      return {
+        requiresManual: requiresManual,
+        reason: reason,
+        detectedTime: detectedTime,
+        detectedCorner: bestCorner ? bestCorner.key : 'bottom-left'
+      };
+    }
+
+    function clampCropInput(input, delta) {
+      const current = Number(input.value) || 0;
+      input.value = Math.max(0, current + delta);
+    }
+
+    function bindManualKeyboardShortcuts() {
+      if (manualKeyHandler) {
+        document.removeEventListener('keydown', manualKeyHandler, true);
+      }
+      manualKeyHandler = function(event) {
+        if (!activeManualSession || timeModal.style.display !== 'flex') return;
+        const tag = (event.target && event.target.tagName ? event.target.tagName.toLowerCase() : '');
+        const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+        const step = event.shiftKey ? 1 : 10;
+
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          modalCancelButton.click();
+          return;
+        }
+        if (event.key === 'Backspace' && !isTyping) {
+          event.preventDefault();
+          modalPrevButton.click();
+          return;
+        }
+        if (event.key === 'Enter' && !isTyping) {
+          event.preventDefault();
+          modalConfirmButton.click();
+          return;
+        }
+        if (isTyping && !['q','Q','e','E','r','R','a','A'].includes(event.key)) {
+          return;
+        }
+
+        switch (event.key) {
+          case 'a':
+          case 'A':
+            event.preventDefault();
+            modalUseAutoButton.click();
+            break;
+          case 'q':
+          case 'Q':
+            event.preventDefault();
+            rotateLeftButton.click();
+            break;
+          case 'e':
+          case 'E':
+            event.preventDefault();
+            rotateRightButton.click();
+            break;
+          case 'r':
+          case 'R':
+            event.preventDefault();
+            modalResetButton.click();
+            break;
+          case 'w':
+          case 'W':
+            event.preventDefault();
+            clampCropInput(manualCropTop, step);
+            renderManualPreview();
+            break;
+          case 's':
+          case 'S':
+            event.preventDefault();
+            clampCropInput(manualCropTop, -step);
+            renderManualPreview();
+            break;
+          case 'i':
+          case 'I':
+            event.preventDefault();
+            clampCropInput(manualCropBottom, step);
+            renderManualPreview();
+            break;
+          case 'k':
+          case 'K':
+            event.preventDefault();
+            clampCropInput(manualCropBottom, -step);
+            renderManualPreview();
+            break;
+          case 'j':
+          case 'J':
+            event.preventDefault();
+            clampCropInput(manualCropLeft, step);
+            renderManualPreview();
+            break;
+          case 'l':
+          case 'L':
+            event.preventDefault();
+            clampCropInput(manualCropLeft, -step);
+            renderManualPreview();
+            break;
+          case 'ArrowRight':
+            event.preventDefault();
+            clampCropInput(manualCropRight, step);
+            renderManualPreview();
+            break;
+          case 'ArrowLeft':
+            event.preventDefault();
+            clampCropInput(manualCropRight, -step);
+            renderManualPreview();
+            break;
+        }
+      };
+      document.addEventListener('keydown', manualKeyHandler, true);
+    }
+
+    function askManualEditor(file, reason, detectedTime, options) {
+      options = options || {};
+      return new Promise(async function(resolve, reject) {
+        try {
+          const key = getFileKey(file);
+          currentManualFile = file;
+          const image = await loadImageElement(file);
+          const state = getDefaultManualState(file, detectedTime);
+
+          activeManualSession = {
+            file: file,
+            image: image,
+            state: state,
+            reason: reason || 'Revisa la imagen, corrige giro, recorte y hora, y luego continúa.'
+          };
+
+          function saveDraftState() {
+            manualDraftStates[key] = {
+              rotation: activeManualSession.state.rotation,
+              cropTop: Number(manualCropTop.value) || 0,
+              cropBottom: Number(manualCropBottom.value) || 0,
+              cropLeft: Number(manualCropLeft.value) || 0,
+              cropRight: Number(manualCropRight.value) || 0,
+              hour: String(manualHour.value).trim(),
+              minute: String(manualMinute.value).trim(),
+              second: String(manualSecond.value).trim()
+            };
+          }
+
+          modalFilename.textContent = file.name + ' (' + image.width + ' x ' + image.height + ' px)';
+          modalProgress.textContent = 'Foto ' + (options.index != null ? options.index + 1 : 1) + ' de ' + (options.total || 1);
+          manualHour.value = state.hour;
+          manualMinute.value = state.minute;
+          manualSecond.value = state.second;
+          manualCropTop.value = state.cropTop;
+          manualCropBottom.value = state.cropBottom;
+          manualCropLeft.value = state.cropLeft;
+          manualCropRight.value = state.cropRight;
+          modalReason.textContent = activeManualSession.reason;
+          showModalAlert('');
+          modalPrevButton.disabled = !options.allowPrevious;
+          modalUseAutoButton.disabled = !detectedTime;
+          timeModal.style.display = 'flex';
+          renderManualPreview();
+          bindManualKeyboardShortcuts();
+
+          const cleanup = function() {
+            modalPrevButton.onclick = null;
+            rotateLeftButton.onclick = null;
+            rotateRightButton.onclick = null;
+            modalResetButton.onclick = null;
+            modalUseAutoButton.onclick = null;
+            modalConfirmButton.onclick = null;
+            modalCancelButton.onclick = null;
+            [manualHour, manualMinute, manualSecond, manualCropTop, manualCropBottom, manualCropLeft, manualCropRight].forEach(function(input) {
+              input.oninput = null;
+            });
+            showModalAlert('');
+            timeModal.style.display = 'none';
+            if (manualKeyHandler) {
+              document.removeEventListener('keydown', manualKeyHandler, true);
+              manualKeyHandler = null;
+            }
+            currentManualFile = null;
+            activeManualSession = null;
+          };
+
+          [manualHour, manualMinute, manualSecond, manualCropTop, manualCropBottom, manualCropLeft, manualCropRight].forEach(function(input) {
+            input.oninput = function() {
+              showModalAlert('');
+              saveDraftState();
+              renderManualPreview();
+            };
+          });
+
+          rotateLeftButton.onclick = function() {
+            activeManualSession.state.rotation = (activeManualSession.state.rotation + 270) % 360;
+            saveDraftState();
+            renderManualPreview();
+          };
+
+          rotateRightButton.onclick = function() {
+            activeManualSession.state.rotation = (activeManualSession.state.rotation + 90) % 360;
+            saveDraftState();
+            renderManualPreview();
+          };
+
+          modalPrevButton.onclick = function() {
+            if (!options.allowPrevious) return;
+            saveDraftState();
+            cleanup();
+            resolve({ nav: 'prev' });
+          };
+
+          modalResetButton.onclick = function() {
+            delete manualDraftStates[key];
+            const resetState = getDefaultManualState(file, detectedTime);
+            activeManualSession.state.rotation = resetState.rotation;
+            activeManualSession.state.cropTop = resetState.cropTop;
+            activeManualSession.state.cropBottom = resetState.cropBottom;
+            activeManualSession.state.cropLeft = resetState.cropLeft;
+            activeManualSession.state.cropRight = resetState.cropRight;
+            manualHour.value = resetState.hour;
+            manualMinute.value = resetState.minute;
+            manualSecond.value = resetState.second;
+            manualCropTop.value = resetState.cropTop;
+            manualCropBottom.value = resetState.cropBottom;
+            manualCropLeft.value = resetState.cropLeft;
+            manualCropRight.value = resetState.cropRight;
+            saveDraftState();
+            renderManualPreview();
+          };
+
+          modalUseAutoButton.onclick = function() {
+            if (!detectedTime) {
+              showModalAlert('Esta foto no tiene hora detectada automáticamente. Debes escribir la hora manualmente para continuar.');
+              return;
+            }
+            manualTimeOverrides[key] = detectedTime;
+            delete manualPhotoOverrides[key];
+            delete manualDraftStates[key];
+            cleanup();
+            resolve({ usedAuto: true });
+          };
+
+          modalConfirmButton.onclick = function() {
+            try {
+              const time = getValidatedManualTime();
+              activeManualSession.state.cropTop = Number(manualCropTop.value) || 0;
+              activeManualSession.state.cropBottom = Number(manualCropBottom.value) || 0;
+              activeManualSession.state.cropLeft = Number(manualCropLeft.value) || 0;
+              activeManualSession.state.cropRight = Number(manualCropRight.value) || 0;
+              drawPreviewToCanvas(activeManualSession.image, activeManualSession.state, document.createElement('canvas'));
+              const result = {
+                rotation: activeManualSession.state.rotation,
+                cropTop: activeManualSession.state.cropTop,
+                cropBottom: activeManualSession.state.cropBottom,
+                cropLeft: activeManualSession.state.cropLeft,
+                cropRight: activeManualSession.state.cropRight,
+                hour: time.hour,
+                minute: time.minute,
+                second: time.second
+              };
+              manualPhotoOverrides[key] = result;
+              manualTimeOverrides[key] = { hour: time.hour, minute: time.minute, second: time.second };
+              delete manualDraftStates[key];
+              cleanup();
+              resolve(result);
+            } catch (error) {
+              showModalAlert(error.message);
+            }
+          };
+
+          modalCancelButton.onclick = function() {
+            saveDraftState();
+            cleanup();
+            reject(new Error('Proceso cancelado por el usuario en el editor manual.'));
+          };
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }
+
+    async function ensureManualRequirements(file) {
+      const key = getFileKey(file);
+      if (manualPhotoOverrides[key]) return;
+      const analysis = await analyzePhotoForManualAssist(file);
+      if (analysis.requiresManual) {
+        await askManualEditor(file, analysis.reason, analysis.detectedTime, { index: selectedFiles.indexOf(file), total: selectedFiles.length, allowPrevious: selectedFiles.indexOf(file) > 0 });
+      }
+    }
+
+    async function getPhotoDateTime(file) {
+      const fixedDate = getFixedDate();
+      let timeParts = await detectReadableTime(file);
+      if (!timeParts) {
+        await askManualEditor(file, 'No se pudo leer la hora automáticamente.', null);
+        timeParts = await detectReadableTime(file);
+      }
+
+      return new Date(
+        fixedDate.year,
+        fixedDate.month - 1,
+        fixedDate.day,
+        timeParts.hour,
+        timeParts.minute,
+        timeParts.second
+      );
+    }
+
+    function formatDate(dateObj) {
+      const mode = document.getElementById('timeFormat').value;
+      const dd = pad(dateObj.getDate());
+      const mm = pad(dateObj.getMonth() + 1);
+      const yyyy = dateObj.getFullYear();
+      const mins = pad(dateObj.getMinutes());
+      const secs = pad(dateObj.getSeconds());
+      const hrs24 = pad(dateObj.getHours());
+
+      if (mode === '24') {
+        return dd + '/' + mm + '/' + yyyy + ' ' + hrs24 + ':' + mins + ':' + secs;
+      }
+      if (mode === 'camera') {
+        const months = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
+        const monthName = months[dateObj.getMonth()];
+        return monthName + ' ' + dd + ' ' + yyyy + ' ' + hrs24 + ':' + mins + ':' + secs;
+      }
+      let hours = dateObj.getHours();
+      const suffix = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      if (hours === 0) hours = 12;
+      return dd + '/' + mm + '/' + yyyy + ' ' + pad(hours) + ':' + mins + ':' + secs + suffix;
+    }
+
+    function placeTextBlock(ctx, canvas, text) {
+      const corner = document.getElementById('cornerSelect').value;
+      const fontFamily = document.getElementById('fontFamily').value;
+      const fontSize = Math.max(14, Number(document.getElementById('fontSize').value) || 28);
+      const fontColor = document.getElementById('fontColor').value;
+      const textOpacity = Math.max(0.1, Math.min(1, Number(document.getElementById('textOpacity').value) || 1));
+      const bgOpacity = Math.max(0, Math.min(1, Number(document.getElementById('bgOpacity').value) || 0.45));
+      const padding = Math.max(14, Math.round(canvas.width * 0.015));
+      const boxPadX = Math.round(fontSize * 0.55);
+      const boxPadY = Math.round(fontSize * 0.35);
+
+      ctx.font = 'bold ' + fontSize + 'px ' + fontFamily;
+      ctx.textBaseline = 'top';
+      const textWidth = ctx.measureText(text).width;
+      const boxWidth = textWidth + boxPadX * 2;
+      const boxHeight = fontSize + boxPadY * 2;
+
+      let x = padding;
+      let y = padding;
+      if (corner === 'top-right') {
+        x = canvas.width - boxWidth - padding;
+      } else if (corner === 'bottom-right') {
+        x = canvas.width - boxWidth - padding;
+        y = canvas.height - boxHeight - padding;
+      } else if (corner === 'bottom-left') {
+        y = canvas.height - boxHeight - padding;
+      }
+
+      ctx.fillStyle = 'rgba(0, 0, 0, ' + bgOpacity + ')';
+      ctx.fillRect(x, y, boxWidth, boxHeight);
+      ctx.fillStyle = rgbaFromHex(fontColor, textOpacity);
+      ctx.fillText(text, x + boxPadX, y + boxPadY);
+    }
+
+    async function processImage(file) {
+      const key = getFileKey(file);
+      await ensureManualRequirements(file);
+      const img = await loadImageElement(file);
+      const photoDate = await getPhotoDateTime(file);
+      const text = formatDate(photoDate);
+      const canvas = document.createElement('canvas');
+      const override = manualPhotoOverrides[key];
+      const state = override ? {
+        rotation: override.rotation || 0,
+        cropTop: override.cropTop || 0,
+        cropBottom: override.cropBottom || 0,
+        cropLeft: override.cropLeft || 0,
+        cropRight: override.cropRight || 0
+      } : {
+        rotation: 0,
+        cropTop: Number(document.getElementById('cropTop').value) || 0,
+        cropBottom: Number(document.getElementById('cropBottom').value) || 0,
+        cropLeft: Number(document.getElementById('cropLeft').value) || 0,
+        cropRight: Number(document.getElementById('cropRight').value) || 0
+      };
+
+      drawPreviewToCanvas(img, state, canvas);
+      const ctx = canvas.getContext('2d');
+      placeTextBlock(ctx, canvas, text);
+
+      return new Promise(function(resolve, reject) {
+        canvas.toBlob(function(blob) {
+          if (!blob) {
+            reject(new Error('No se pudo generar la imagen.'));
+            return;
+          }
+          resolve({ blob: blob, text: text, previewUrl: canvas.toDataURL('image/jpeg', 0.92) });
+        }, 'image/jpeg', 0.92);
+      });
+    }
+
+    function sortFiles(files) {
+      return Array.from(files)
+        .filter(function(file) { return file.type && file.type.indexOf('image/') === 0; })
+        .sort(function(a, b) { return a.name.localeCompare(b.name, 'es', { numeric: true }); });
+    }
+
+    function refreshStatus() {
+      if (!selectedFiles.length) {
+        setStatus('Aún no has cargado fotografías.', '');
+        return;
+      }
+      setStatus('Cargadas ' + selectedFiles.length + ' fotografías.', 'success');
+    }
+
+    function ensureReady() {
+      if (!selectedFiles.length) throw new Error('Necesitas cargar fotografías.');
+      if (timeModal.style.display === 'flex' || currentManualFile) {
+        throw new Error('Debes terminar la edición manual de la foto pendiente antes de continuar.');
+      }
+      getFixedDate();
+    }
+
+    async function collectManualTimesForAllFiles() {
+      if (isReviewStillValid()) {
+        setStatus('Las fotografías ya estaban verificadas. Puedes guardarlas sin repetir la revisión.', 'success');
+        return;
+      }
+      let i = 0;
+      while (i < selectedFiles.length) {
+        const file = selectedFiles[i];
+        const analysis = await analyzePhotoForManualAssist(file);
+        const key = getFileKey(file);
+        const hasConfirmed = !!manualPhotoOverrides[key] || !!manualTimeOverrides[key];
+        if (analysis.requiresManual || !hasConfirmed) {
+          if (!analysis.detectedTime && !hasConfirmed) {
+            setStatus('Falta definir hora manual para algunas fotos. Revisa la ventana emergente.', 'error');
+          }
+          const result = await askManualEditor(file, analysis.reason || 'Revisa la imagen, corrige giro, recorte y hora, y luego continúa.', analysis.detectedTime, { index: i, total: selectedFiles.length, allowPrevious: i > 0 });
+          if (result && result.nav === 'prev') {
+            i = Math.max(0, i - 1);
+            continue;
+          }
+        }
+        i += 1;
+      }
+      markReviewCompleted();
+    }
+
+    dropzone.addEventListener('dragover', function(event) {
+      event.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+    dropzone.addEventListener('dragleave', function() {
+      dropzone.classList.remove('dragover');
+    });
+    dropzone.addEventListener('drop', function(event) {
+      event.preventDefault();
+      dropzone.classList.remove('dragover');
+      selectedFiles = sortFiles(event.dataTransfer.files);
+      invalidateReviewState();
+      refreshStatus();
+    });
+
+    fileInput.addEventListener('change', function(event) {
+      selectedFiles = sortFiles(event.target.files);
+      invalidateReviewState();
+      refreshStatus();
+    });
+
+    clearButton.addEventListener('click', function() {
+      selectedFiles = [];
+      manualTimeOverrides = {};
+      manualPhotoOverrides = {};
+      manualDraftStates = {};
+      invalidateReviewState();
+      fileInput.value = '';
+      previewGrid.innerHTML = '';
+      refreshStatus();
+    });
+
+    smartAssistToggle.addEventListener('change', invalidateReviewState);
+    document.getElementById('readMode').addEventListener('change', invalidateReviewState);
+
+    previewButton.addEventListener('click', async function() {
+      previewGrid.innerHTML = '';
+      try {
+        ensureReady();
+        setStatus('Revisando fotos antes de la vista previa...', 'success');
+        await collectManualTimesForAllFiles();
+        setStatus('Generando vista previa...', 'success');
+        for (let i = 0; i < Math.min(8, selectedFiles.length); i++) {
+          const result = await processImage(selectedFiles[i]);
+          const card = document.createElement('div');
+          card.className = 'preview-item';
+          card.innerHTML = '<img src="' + result.previewUrl + '" alt="Vista previa ' + (i + 1) + '">' +
+            '<div class="preview-caption"><strong>' + selectedFiles[i].name + '</strong><br>' + result.text + '</div>';
+          previewGrid.appendChild(card);
+        }
+        setStatus('Vista previa generada. Se muestran 8 ejemplos.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    });
+
+    downloadButton.addEventListener('click', async function() {
+      try {
+        if (typeof JSZip === 'undefined') {
+          throw new Error('No se pudo cargar la librería ZIP. Revisa tu conexión a internet al abrir el archivo HTML.');
+        }
+        ensureReady();
+        setStatus('Revisando fotografías antes de descargar...', 'success');
+        await collectManualTimesForAllFiles();
+        setStatus('Procesando fotografías y creando ZIP...', 'success');
+
+        const zip = new JSZip();
+        const fixedDate = getFixedDate();
+        const packageName = sanitizeName(document.getElementById('packageName').value);
+        const folderName = packageName + '_' + fixedDate.year + '-' + pad(fixedDate.month) + '-' + pad(fixedDate.day);
+        const folder = zip.folder(folderName);
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+          const stamped = await processImage(selectedFiles[i]);
+          const outputName = String(i + 1).padStart(2, '0') + '_' + selectedFiles[i].name.replace(/\.[^.]+$/, '') + '.jpg';
+          folder.file(outputName, stamped.blob);
+        }
+
+        const content = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        const zipName = folderName + '.zip';
+        link.href = URL.createObjectURL(content);
+        link.download = zipName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function() { URL.revokeObjectURL(link.href); }, 2000);
+        setStatus('ZIP generado correctamente: ' + zipName + '.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    });
+
+    saveFolderButton.addEventListener('click', async function() {
+      try {
+        ensureReady();
+        setStatus('Revisando fotografías antes de guardar...', 'success');
+        await collectManualTimesForAllFiles();
+        if (!window.showDirectoryPicker) {
+          throw new Error('Tu navegador no soporta guardar directamente en carpeta. Usa Chrome o Edge reciente.');
+        }
+
+        const fixedDate = getFixedDate();
+        const packageName = sanitizeName(document.getElementById('packageName').value);
+        const folderName = packageName + '_' + fixedDate.year + '-' + pad(fixedDate.month) + '-' + pad(fixedDate.day);
+        const rootDir = await window.showDirectoryPicker();
+        const targetDir = await rootDir.getDirectoryHandle(folderName, { create: true });
+
+        setStatus('Guardando archivos... Las fotos sospechosas abrirán el editor manual para que ajustes recorte, giro y hora.', 'success');
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+          const stamped = await processImage(selectedFiles[i]);
+          const outputName = String(i + 1).padStart(2, '0') + '_' + selectedFiles[i].name.replace(/\.[^.]+$/, '') + '.jpg';
+          const fileHandle = await targetDir.getFileHandle(outputName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(stamped.blob);
+          await writable.close();
+        }
+
+        setStatus('Archivos guardados correctamente en la carpeta ' + folderName + '.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    });
+  </script>
+  </script>
+
+  <script>
+      window.addEventListener("load", function () {
+        const progressBar = document.getElementById("progressBar");
+        const progressText = document.getElementById("progressText");
+        const splashScreen = document.getElementById("splashScreen");
+        const mainApp = document.getElementById("mainApp");
+
+        let progress = 0;
+
+        const interval = setInterval(function () {
+          progress += 2;
+
+          if (progress > 100) {
+            progress = 100;
+          }
+
+          progressBar.style.width = progress + "%";
+          progressText.textContent = "Cargando... " + progress + "%";
+
+          if (progress === 100) {
+            clearInterval(interval);
+
+            setTimeout(function () {
+              splashScreen.style.display = "none";
+              mainApp.style.display = "block";
+            }, 300);
+          }
+        }, 80); //VELOCIDAD
+      });
+  </script>
+
+</body>
+</html>
